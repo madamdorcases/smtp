@@ -260,31 +260,78 @@ class SMTPHandler:
 # ---------------------------------------------------------------------------
 # Server lifecycle
 # ---------------------------------------------------------------------------
-class SMTPServerController(Controller):
-    """Custom Controller that uses our SSL context for implicit TLS."""
+# How implicit-TLS vs STARTTLS actually works in aiosmtpd:
+#
+#   Controller(ssl_context=ctx)
+#     → asyncio.create_server(ssl=ctx)
+#     → the LISTENING SOCKET is wrapped in TLS
+#     → SMTP instance receives an already-SSL-wrapped connection
+#     → use this for port 465 (implicit TLS)
+#
+#   Controller(ssl_context=None) + SMTP(tls_context=ctx, require_starttls=True)
+#     → listening socket is plain TCP
+#     → SMTP instance handles STARTTLS upgrade itself when client asks
+#     → use this for port 587 (STARTTLS)
+#
+class ImplicitTLSController(Controller):
+    """Port 465 — implicit TLS. SSL handshake happens at socket level."""
 
     def __init__(self, handler, hostname, port, ssl_context, **kwargs):
-        super().__init__(handler, hostname=hostname, port=port, **kwargs)
-        self._ssl_context = ssl_context
+        # Pass ssl_context to the parent Controller — it will be used by
+        # create_server(ssl=ctx) to wrap the listening socket in TLS.
+        super().__init__(
+            handler,
+            hostname=hostname,
+            port=port,
+            ssl_context=ssl_context,
+            **kwargs,
+        )
 
     def factory(self):
+        mail_hostname = settings.mail_hostname or f"mail.{settings.domain}"
+        # SMTP instance sees an already-TLS-wrapped connection.
+        # Do NOT pass tls_context (no STARTTLS upgrade needed).
+        # require_starttls=False because TLS is already established.
         return SMTP(
             self.handler,
-            hostname=self.hostname,
-            port=self.port,
-            ssl_context=self._ssl_context,
+            hostname=mail_hostname,
+            tls_context=None,
             authenticator=Authenticator(),
-            auth_require_tls=True,   # AUTH only allowed over TLS
-            require_starttls=True,   # refuse MAIL without STARTTLS
+            auth_require_tls=True,
+            require_starttls=False,
             timeout=60,
-            maximum_message_size=settings.smtp_max_message_bytes or 102400,
+            data_size_limit=settings.smtp_max_message_bytes or 102400,
+        )
+
+
+class StartTLSController(Controller):
+    """Port 587 — STARTTLS. Socket is plain TCP; SMTP upgrades on client request."""
+
+    def __init__(self, handler, hostname, port, ssl_context, **kwargs):
+        # Do NOT pass ssl_context to Controller — listening socket stays plain TCP.
+        # Store the context so the SMTP factory can use it for STARTTLS upgrade.
+        super().__init__(handler, hostname=hostname, port=port, **kwargs)
+        self._tls_context = ssl_context
+
+    def factory(self):
+        mail_hostname = settings.mail_hostname or f"mail.{settings.domain}"
+        # SMTP instance gets the TLS context for STARTTLS upgrade.
+        return SMTP(
+            self.handler,
+            hostname=mail_hostname,
+            tls_context=self._tls_context,
+            authenticator=Authenticator(),
+            auth_require_tls=True,
+            require_starttls=True,   # client MUST STARTTLS before MAIL
+            timeout=60,
+            data_size_limit=settings.smtp_max_message_bytes or 102400,
         )
 
 
 _ssl_ctx_465: Optional[ssl.SSLContext] = None
 _ssl_ctx_587: Optional[ssl.SSLContext] = None
-_controller_465: Optional[SMTPServerController] = None
-_controller_587: Optional[SMTPServerController] = None
+_controller_465: Optional[ImplicitTLSController] = None
+_controller_587: Optional[StartTLSController] = None
 
 
 async def start_smtp_server() -> None:
@@ -296,7 +343,8 @@ async def start_smtp_server() -> None:
     _ssl_ctx_587 = _build_ssl_context()  # same certs, separate context
 
     # Port 465 — implicit TLS (the user wants this as the primary port)
-    _controller_465 = SMTPServerController(
+    # The Controller wraps the listening socket in TLS via create_server(ssl=ctx).
+    _controller_465 = ImplicitTLSController(
         handler,
         hostname="0.0.0.0",
         port=465,
@@ -308,11 +356,12 @@ async def start_smtp_server() -> None:
 
     # Port 587 — STARTTLS (kept for compatibility with clients that don't
     # support implicit TLS on 465; safe to firewall off if you don't want it)
-    _controller_587 = SMTPServerController(
+    # The Controller binds a plain TCP socket; SMTP does STARTTLS upgrade.
+    _controller_587 = StartTLSController(
         handler,
         hostname="0.0.0.0",
         port=587,
-        ssl_context=_ssl_ctx_587,  # used for STARTTLS upgrade
+        ssl_context=_ssl_ctx_587,
     )
     _controller_587.start()
     log.info("smtp.listening port=587 mode=starttls hostname=mail.%s",

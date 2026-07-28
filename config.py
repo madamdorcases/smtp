@@ -99,7 +99,9 @@ class Config:
 config = Config()
 
 
-
+# ==========================================================================
+# ADAPTER LAYER — typed accessors + lower-case aliases
+# ==========================================================================
 def _get_int(name: str, default: int = 0) -> int:
     v = os.environ.get(name)
     if v is None or v == "":
@@ -125,6 +127,9 @@ def _get_list(name: str, default=None) -> list:
 
 
 class _SettingsAdapter:
+    """Typed adapter over the raw Config singleton."""
+
+    # --- derived / extra fields (NOT from env vars) ---
     app_name: str = "smtp-relay"
     spam_keyword_list: list = [
         "viagra", "cialis", "lottery", "winner", "free money",
