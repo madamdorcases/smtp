@@ -17,12 +17,12 @@ RUN pip install -q -r requirements.txt
 
 COPY . .
 
-EXPOSE 15484
+EXPOSE 8000
 
 # Critical: empty terminal under normal operation
 CMD ["uvicorn", "app:app", \
      "--host", "0.0.0.0", \
-     "--port", "15484", \
+     "--port", "8000", \
      "--log-level", "critical", \
      "--no-access-log", \
      "--use-colors=false"]
