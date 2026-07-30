@@ -1,0 +1,14 @@
+fastapi>=0.115,<0.116
+uvicorn[standard]>=0.30,<0.31
+motor>=3.7,<4
+pymongo>=4.10,<5
+redis>=5.0,<6
+aiosmtplib>=3.0,<4
+cryptography>=43,<45
+dkimpy>=1.1,<2
+python-dotenv>=1.0,<2
+PyJWT>=2.9,<3
+passlib[bcrypt]>=1.7,<2
+pydantic>=2.9,<3
+email-validator>=2.2,<3
+dnspython>=2.6,<3

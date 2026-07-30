@@ -1,0 +1,46 @@
+services:
+  smtp-app:
+    build: .
+    container_name: smtp-app
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "0.0.0.0:15484:15484"   # App reachable on VPS public IP — protect with firewall later
+    depends_on:
+      - smtp-redis
+    networks:
+      - smtp-internal
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:15484/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  smtp-redis:
+    image: redis:7-alpine
+    container_name: smtp-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 32mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD}
+    networks:
+      - smtp-internal
+    # No port mapping — Redis is internal-only
+    deploy:
+      resources:
+        limits:
+          memory: 48M
+
+networks:
+  smtp-internal:
+    driver: bridge

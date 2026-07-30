@@ -1,0 +1,1 @@
+"""SMTP verification service package."""
