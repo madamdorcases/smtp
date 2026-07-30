@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "0.0.0.0:15484:15484"   # App reachable on VPS public IP — protect with firewall later
+      - "0.0.0.0:8000:8000"   # App reachable on VPS public IP — protect with firewall later
     depends_on:
       - smtp-redis
     networks:
@@ -16,7 +16,7 @@ services:
           memory: 384M
           cpus: "0.5"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:15484/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
