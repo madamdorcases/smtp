@@ -19,10 +19,4 @@ COPY . .
 
 EXPOSE 8000
 
-# Critical: empty terminal under normal operation
-CMD ["uvicorn", "app:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--log-level", "critical", \
-     "--no-access-log", \
-     "--use-colors=false"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
